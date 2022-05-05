@@ -252,9 +252,9 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                 asyncResp->res.jsonValue["Id"] = "Metrics";
 
                 asyncResp->res.jsonValue["Oem"]["@odata.type"] =
-                    "#OemPowerSupplyMetric.v1_0_0.Oem";
+                    "#OemPowerSupplyMetric.Oem";
                 asyncResp->res.jsonValue["Oem"]["IBM"]["@odata.type"] =
-                    "#OemPowerSupplyMetric.v1_0_0.IBM";
+                    "#OemPowerSupplyMetric.IBM";
                 getAverageValues(asyncResp, chassisId, powerSupplyId);
                 getMaxValues(asyncResp, chassisId, powerSupplyId);
             });
