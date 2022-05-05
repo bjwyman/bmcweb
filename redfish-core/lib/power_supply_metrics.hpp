@@ -242,7 +242,7 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                 BMCWEB_LOG_DEBUG << "PowerSupplyID: " << powerSupplyId;
 
                 asyncResp->res.jsonValue["@odata.type"] =
-                    "#PowerSupplyMetric.v1_0_0.PowerSupplyMetric";
+                    "#PowerSupplyMetric.PowerSupplyMetric";
                 asyncResp->res.jsonValue["@odata.id"] =
                     "/redfish/v1/Chassis/" + chassisId +
                     "/PowerSubsystem/PowerSupplies/" + powerSupplyId +
