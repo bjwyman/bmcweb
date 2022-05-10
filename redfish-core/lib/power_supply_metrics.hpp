@@ -13,20 +13,264 @@ namespace redfish
  *
  * @return None.
  */
-inline void getAverageValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
-                             const std::string& chassisID,
-                             const std::string& powerSupplyID)
+inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+                      const std::string& chassisID,
+                      const std::string& powerSupplyID)
 {
     BMCWEB_LOG_DEBUG << "Get power supply average input power values";
     BMCWEB_LOG_DEBUG << "ChassisID: " << chassisID;
     BMCWEB_LOG_DEBUG << "PowerSupplyID: " << powerSupplyID;
     // Setup date/timestamp and average values as arrays.
-    aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"]["Date"] =
-        nlohmann::json::array();
-    aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"]["Average"] =
-        nlohmann::json::array();
+    aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"]["@odata.type"] =
+        "#OemPowerSupplyMetric.InputPowerHistoryItem";
+    // aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"] =
+    //    nlohmann::json::array();
+    //["Date"] =
+    //["Average"] =
+    //["Max"] =
+    nlohmann::json& jsonResponse = aResp->res.jsonValue;
+    nlohmann::json& inputPowerHistoryItemArray =
+        jsonResponse["Oem"]["IBM"]["InputPowerHistoryItem"];
+    inputPowerHistoryItemArray = nlohmann::json::array();
+    auto date = crow::utility::getDateTime(
+        static_cast<std::time_t>((1652222513979 / 1000)));
+    // for (auto& ipv4Config : ipv4Data)
+    {
+        inputPowerHistoryItemArray.push_back(
+            {{"Date", date}, {"Average", 25}, {"Maximum", 26}});
+    }
+    // dbus-send --system --print-reply --dest=xyz.openbmc_project.ObjectMapper
+    // /xyz/openbmc_project/object_mapper
+    // xyz.openbmc_project.ObjectMapper.GetSubTree
+    // string:"/org/open_power/sensors/aggregation/per_30s" int32:0
+    // array:string:"org.open_power.Sensor.Aggregation.History.Average"
+    //
+    // dbus-send
+    // --system --print-reply --dest=xyz.openbmc_project.ObjectMapper
+    // /xyz/openbmc_project/object_mapper
+    // xyz.openbmc_project.ObjectMapper.GetSubTree
+    // string:"/org/open_power/sensors/aggregation/per_30s" int32:0
+    // array:string:"org.open_power.Sensor.Aggregation.History.Maximum"
+
+    const std::array<std::string, 1> averageInterfaces = {
+        "org.open_power.Sensor.Aggregation.History.Average"};
+    const std::array<std::string, 1> maximumInterfaces = {
+        "org.open_power.Sensor.Aggregation.History.Maximum"};
+
+    crow::connections::systemBus->async_method_call(
+        [aResp, chassisID, powerSupplyID, inputPowerHistoryItemArray](
+            const boost::system::error_code ec,
+            const std::vector<std::pair<
+                std::string,
+                std::vector<std::pair<std::string, std::vector<std::string>>>>>&
+                averagesubtree) {
+            if (ec)
+            {
+                BMCWEB_LOG_DEBUG << "D-Bus response error on GetSubTree " << ec;
+                messages::internalError(aResp->res);
+                return;
+            }
+
+            for (const auto& [objectPath, serviceName] : averagesubtree)
+            {
+                if (objectPath.empty() || serviceName.size() != 1)
+                {
+                    BMCWEB_LOG_DEBUG << "Error getting D-Bus object!";
+                    messages::internalError(aResp->res);
+                    return;
+                }
+
+                const std::string& validPath = objectPath;
+                const std::string& connectionName = serviceName[0].first;
+                BMCWEB_LOG_DEBUG << "validPath " << validPath;
+                BMCWEB_LOG_DEBUG << "connectionName " << connectionName;
+                // validPath -> {psu}_input_power
+                // 5 below comes from
+                // /org/open_power/sensors/aggregation/per_30s/
+                //   0      1         2         3         4
+                // .../{psu}_input_power/average
+                //           5..............6
+                // I know it is average... I need to match the psu?
+                auto psuMatchStr = powerSupplyID + "_input_power";
+                BMCWEB_LOG_DEBUG << "psuInputPowerStr " << psuMatchStr;
+                std::string psuInputPowerStr;
+                if (!dbus::utility::getNthStringFromPath(validPath, 5,
+                                                         psuInputPowerStr))
+                {
+                    BMCWEB_LOG_ERROR << "Got invalid path " << validPath;
+                    messages::invalidObject(aResp->res, validPath);
+                    return;
+                }
+
+                if (psuInputPowerStr == psuMatchStr)
+                {
+                    BMCWEB_LOG_DEBUG << "psuInputPowerStr " << psuInputPowerStr;
+                    crow::connections::systemBus->async_method_call(
+                        [aResp, chassisID, powerSupplyID,
+                         &inputPowerHistoryItemArray](
+                            const boost::system::error_code ec2,
+                            const std::variant<std::vector<std::tuple<
+                                std::uint64_t, std::int64_t>>>& averageValues) {
+                            if (ec2)
+                            {
+                                BMCWEB_LOG_DEBUG << "D-Bus response error";
+                                messages::internalError(aResp->res);
+                                return;
+                            }
+                            const std::vector<
+                                std::tuple<std::uint64_t, std::int64_t>>*
+                                avgValuesPtr = std::get_if<std::vector<
+                                    std::tuple<std::uint64_t, std::int64_t>>>(
+                                    &averageValues);
+                            if (avgValuesPtr == nullptr)
+                            {
+                                messages::internalError(aResp->res);
+                                return;
+                            }
+
+                            for (const auto& values : *avgValuesPtr)
+                            {
+                                // The first value returned is the
+                                // timestamp, it is in milliseconds
+                                // since the Epoch. Divide that by 1000,
+                                // to get date/time via seconds since
+                                // the Epoch.
+                                BMCWEB_LOG_DEBUG
+                                    << "DateTime: "
+                                    << crow::utility::getDateTime(
+                                           static_cast<std::time_t>(
+                                               (std::get<0>(values) / 1000)));
+                                // The second value returned is in
+                                // watts. It is the average watts this
+                                // power supply has used in a 30 second
+                                // interval.
+                                BMCWEB_LOG_DEBUG << "Average: "
+                                                 << std::get<1>(values);
+                            }
+                            //...
+                        },
+                        connectionName, validPath,
+                        "org.freedesktop.DBus.Properties", "Get",
+                        "org.open_power.Sensor.Aggregation.History.Average",
+                        "Values");
+                }
+            }
+        },
+        "xyz.openbmc_project.ObjectMapper",
+        "/xyz/openbmc_project/object_mapper",
+        "xyz.openbmc_project.ObjectMapper", "GetSubTree",
+        "/org/open_power/sensors/aggregation/per_30s", 0, averageInterfaces);
+
+    crow::connections::systemBus->async_method_call(
+        [aResp, chassisID, powerSupplyID, inputPowerHistoryItemArray](
+            const boost::system::error_code ec,
+            const std::vector<std::pair<
+                std::string,
+                std::vector<std::pair<std::string, std::vector<std::string>>>>>&
+                maximumsubtree) {
+            if (ec)
+            {
+                BMCWEB_LOG_DEBUG << "D-Bus response error on GetSubTree " << ec;
+                messages::internalError(aResp->res);
+                return;
+            }
+
+            for (const auto& [objectPath, serviceName] : maximumsubtree)
+            {
+                if (objectPath.empty() || serviceName.size() != 1)
+                {
+                    BMCWEB_LOG_DEBUG << "Error getting D-Bus object!";
+                    messages::internalError(aResp->res);
+                    return;
+                }
+
+                const std::string& validPath = objectPath;
+                const std::string& connectionName = serviceName[0].first;
+                BMCWEB_LOG_DEBUG << "validPath " << validPath;
+                BMCWEB_LOG_DEBUG << "connectionName " << connectionName;
+                // validPath -> {psu}_input_power
+                // 5 below comes from
+                // /org/open_power/sensors/aggregation/per_30s/
+                //   0      1         2         3         4
+                // .../{psu}_input_power/maximum
+                //           5..............6
+                // I know it is average... I need to match the psu?
+                auto psuMatchStr = powerSupplyID + "_input_power";
+                BMCWEB_LOG_DEBUG << "psuInputPowerStr " << psuMatchStr;
+                std::string psuInputPowerStr;
+                if (!dbus::utility::getNthStringFromPath(validPath, 5,
+                                                         psuInputPowerStr))
+                {
+                    BMCWEB_LOG_ERROR << "Got invalid path " << validPath;
+                    messages::invalidObject(aResp->res, validPath);
+                    return;
+                }
+
+                if (psuInputPowerStr == psuMatchStr)
+                {
+                    BMCWEB_LOG_DEBUG << "psuInputPowerStr " << psuInputPowerStr;
+                    crow::connections::systemBus->async_method_call(
+                        [aResp, chassisID, powerSupplyID,
+                         &inputPowerHistoryItemArray](
+                            const boost::system::error_code ec2,
+                            const std::variant<std::vector<std::tuple<
+                                std::uint64_t, std::int64_t>>>& maximumValues) {
+                            if (ec2)
+                            {
+                                BMCWEB_LOG_DEBUG << "D-Bus response error";
+                                messages::internalError(aResp->res);
+                                return;
+                            }
+                            const std::vector<
+                                std::tuple<std::uint64_t, std::int64_t>>*
+                                maxValuesPtr = std::get_if<std::vector<
+                                    std::tuple<std::uint64_t, std::int64_t>>>(
+                                    &maximumValues);
+                            if (maxValuesPtr == nullptr)
+                            {
+                                messages::internalError(aResp->res);
+                                return;
+                            }
+
+                            for (const auto& values : *maxValuesPtr)
+                            {
+                                // The first value returned is the
+                                // timestamp, it is in milliseconds
+                                // since the Epoch. Divide that by 1000,
+                                // to get date/time via seconds since
+                                // the Epoch.
+                                BMCWEB_LOG_DEBUG
+                                    << "DateTime: "
+                                    << crow::utility::getDateTime(
+                                           static_cast<std::time_t>(
+                                               (std::get<0>(values) / 1000)));
+                                // The second value returned is in
+                                // watts. It is the average watts this
+                                // power supply has used in a 30 second
+                                // interval.
+                                BMCWEB_LOG_DEBUG << "Maximum: "
+                                                 << std::get<1>(values);
+                            }
+                            //...
+                        },
+                        connectionName, validPath,
+                        "org.freedesktop.DBus.Properties", "Get",
+                        "org.open_power.Sensor.Aggregation.History.Maximum",
+                        "Values");
+                }
+            }
+        },
+        "xyz.openbmc_project.ObjectMapper",
+        "/xyz/openbmc_project/object_mapper",
+        "xyz.openbmc_project.ObjectMapper", "GetSubTree",
+        "/org/open_power/sensors/aggregation/per_30s", 0, maximumInterfaces);
+
+#if 0
+>>>>>>> 5d19ca51... add date/average/max to input history array
     auto averagePath = "/org/open_power/sensors/aggregation/per_30s/" +
                        powerSupplyID + "_input_power/average";
+    auto maximumPath = "/org/open_power/sensors/aggregation/per_30s/" +
+                       powerSupplyID + "_input_power/maximum";
 
     crow::connections::systemBus->async_method_call(
         [aResp, powerSupplyID, averagePath](
@@ -117,8 +361,10 @@ inline void getAverageValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
         "xyz.openbmc_project.ObjectMapper", "GetObject", averagePath,
         std::array<const char*, 1>{
             "org.open_power.Sensor.Aggregation.History.Average"});
+#endif
 }
 
+#if 0
 /**
  * @brief Get power supply maximum and date values given chassis and power
  * supply IDs.
@@ -221,6 +467,7 @@ inline void getMaxValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
         std::array<const char*, 1>{
             "org.open_power.Sensor.Aggregation.History.Maximum"});
 }
+#endif
 
 /**
  * Systems derived class for delivering OemPowerSupplyMetrics Schema.
@@ -266,8 +513,8 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                             "#OemPowerSupplyMetrics.Oem";
                         asyncResp->res.jsonValue["Oem"]["IBM"]["@odata.type"] =
                             "#OemPowerSupplyMetrics.IBM";
-                        getAverageValues(asyncResp, chassisID, powerSupplyID);
-                        getMaxValues(asyncResp, chassisID, powerSupplyID);
+                        getValues(asyncResp, chassisID, powerSupplyID);
+                        // getMaxValues(asyncResp, chassisID, powerSupplyID);
                     };
                 redfish::chassis_utils::getValidChassisID(
                     asyncResp, chassisID, std::move(getChassisID));
