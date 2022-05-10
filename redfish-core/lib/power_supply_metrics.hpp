@@ -224,7 +224,7 @@ inline void getMaxValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
 }
 
 /**
- * Systems derived class for delivering OemPowerSupplyMetric Schema.
+ * Systems derived class for delivering OemPowerSupplyMetrics Schema.
  */
 inline void requestRoutesPowerSupplyMetrics(App& app)
 {
@@ -264,9 +264,9 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                         asyncResp->res.jsonValue["Id"] = "Metrics";
 
                         asyncResp->res.jsonValue["Oem"]["@odata.type"] =
-                            "#OemPowerSupplyMetric.Oem";
+                            "#OemPowerSupplyMetrics.Oem";
                         asyncResp->res.jsonValue["Oem"]["IBM"]["@odata.type"] =
-                            "#OemPowerSupplyMetric.IBM";
+                            "#OemPowerSupplyMetrics.IBM";
                         getAverageValues(asyncResp, chassisID, powerSupplyID);
                         getMaxValues(asyncResp, chassisID, powerSupplyID);
                     };

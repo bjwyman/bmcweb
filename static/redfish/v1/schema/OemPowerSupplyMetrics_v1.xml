@@ -17,22 +17,22 @@
     </edmx:Reference>
 
     <edmx:DataServices>
-        <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="OemPowerSupplyMetric">
+        <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="OemPowerSupplyMetrics">
                 <Annotation Term="Redfish.OwningEntity" String="OpenBMC"/>
         </Schema>
 
-        <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="OemPowerSupplyMetric.v1_0_0">
+        <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="OemPowerSupplyMetrics.v1_0_0">
             <ComplexType Name="Oem" BaseType="Resource.OemObject">
                 <Annotation Term="OData.AdditionalProperties" Bool="true" />
-                <Annotation Term="OData.Description" String="OemPowerSupplyMetric Oem properties." />
+                <Annotation Term="OData.Description" String="OemPowerSupplyMetrics Oem properties." />
                 <Annotation Term="OData.AutoExpand"/>
-                <Property Name="IBM" Type="OemPowerSupplyMetric.IBM"/>
+                <Property Name="IBM" Type="OemPowerSupplyMetrics.IBM"/>
             </ComplexType>
             <ComplexType Name="IBM">
                 <Annotation Term="OData.AdditionalProperties" Bool="true" />
                 <Annotation Term="OData.Description" String="IBM Oem properties for Power Supply Metrics." />
                 <Annotation Term="OData.AutoExpand"/>
-                <Property Name="InputPowerHistoryItems" Type="Collection(OemPowerSupplyMetric.InputPowerHistoryItem)"/>
+                <Property Name="InputPowerHistoryItems" Type="Collection(OemPowerSupplyMetrics.InputPowerHistoryItem)"/>
             </ComplexType>
 
             <ComplexType Name="InputPowerHistoryItem" BaseType="Resource.OemObject">
