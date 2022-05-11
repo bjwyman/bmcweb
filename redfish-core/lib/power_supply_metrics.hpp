@@ -25,7 +25,6 @@ inline void getAverageValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
         nlohmann::json::array();
     aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"]["Average"] =
         nlohmann::json::array();
-
     auto averagePath = "/org/open_power/sensors/aggregation/per_30s/" +
                        powerSupplyID + "_input_power/average";
 
@@ -139,7 +138,7 @@ inline void getMaxValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
     BMCWEB_LOG_DEBUG << "PowerSupplyID: " << powerSupplyID;
 
     // Setup Max as an array.
-    aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"]["Max"] =
+    aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"]["Maximum"] =
         nlohmann::json::array();
 
     auto maximumPath = "/org/open_power/sensors/aggregation/per_30s/" +
@@ -188,7 +187,7 @@ inline void getMaxValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                                         aResp->res
                                             .jsonValue["Oem"]["IBM"]
                                                       ["InputPowerHistoryItem"]
-                                                      ["Max"];
+                                                      ["Maximum"];
                                     for (const auto& values : *valuesPtr)
                                     {
                                         // The first value returned is the

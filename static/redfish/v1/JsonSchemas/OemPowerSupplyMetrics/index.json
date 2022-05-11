@@ -92,7 +92,7 @@
                     "readonly": true,
                     "type": "integer"
                 },
-                "Max": {
+                "Maximum": {
                     "description": "The maximum power supply input power values",
                     "longDescription": "This property shall contain an array of object that represent the maximum input power the power supply has calculated, each over a 30 second interval.",
                     "readonly": true,
