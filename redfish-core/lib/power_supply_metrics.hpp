@@ -2,6 +2,11 @@
 
 namespace redfish
 {
+using averageMaxEntry = std::tuple<std::uint64_t, std::int64_t>;
+using historyEntry = std::tuple<std::uint64_t, std::int64_t, std::int64_t>;
+using averageMaxArray = std::vector<averageMaxEntry>;
+using historyArray = std::vector<historyEntry>;
+
 inline void getValues2(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                        const std::string& chassisID,
                        const std::string& powerSupplyID,
@@ -59,19 +64,15 @@ inline void getValues2(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                     crow::connections::systemBus->async_method_call(
                         [aResp, chassisID, powerSupplyID](
                             const boost::system::error_code ec2,
-                            const std::variant<std::vector<std::tuple<
-                                std::uint64_t, std::int64_t>>>& intfValues) {
+                            const std::variant<averageMaxArray>& intfValues) {
                             if (ec2)
                             {
                                 BMCWEB_LOG_DEBUG << "D-Bus response error";
                                 messages::internalError(aResp->res);
                                 return;
                             }
-                            const std::vector<
-                                std::tuple<std::uint64_t, std::int64_t>>*
-                                intfValuesPtr = std::get_if<std::vector<
-                                    std::tuple<std::uint64_t, std::int64_t>>>(
-                                    &intfValues);
+                            const averageMaxArray* intfValuesPtr =
+                                std::get_if<averageMaxArray>(&intfValues);
                             if (intfValuesPtr == nullptr)
                             {
                                 messages::internalError(aResp->res);
