@@ -126,8 +126,8 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                       const std::string& powerSupplyID)
 {
     BMCWEB_LOG_DEBUG << "Get power supply average input power values";
-    BMCWEB_LOG_DEBUG << "ChassisID: " << chassisID;
-    BMCWEB_LOG_DEBUG << "PowerSupplyID: " << powerSupplyID;
+    // BMCWEB_LOG_DEBUG << "ChassisID: " << chassisID;
+    // BMCWEB_LOG_DEBUG << "PowerSupplyID: " << powerSupplyID;
     // Setup date/timestamp and average values as arrays.
     aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"]["@odata.type"] =
         "#OemPowerSupplyMetric.InputPowerHistoryItem";
@@ -135,30 +135,19 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
     //    nlohmann::json::array();
     //["Date"] =
     //["Average"] =
-    //["Max"] =
+    //["Maximum"] =
     nlohmann::json& jsonResponse = aResp->res.jsonValue;
     nlohmann::json& inputPowerHistoryItemArray =
         jsonResponse["Oem"]["IBM"]["InputPowerHistoryItem"];
     inputPowerHistoryItemArray = nlohmann::json::array();
     auto date = crow::utility::getDateTime(
         static_cast<std::time_t>((1652222513979 / 1000)));
-    // for (auto& ipv4Config : ipv4Data)
     {
+        BMCWEB_LOG_DEBUG << "Fake values";
         inputPowerHistoryItemArray.push_back(
             {{"Date", date}, {"Average", 25}, {"Maximum", 26}});
     }
-    // dbus-send --system --print-reply --dest=xyz.openbmc_project.ObjectMapper
-    // /xyz/openbmc_project/object_mapper
-    // xyz.openbmc_project.ObjectMapper.GetSubTree
-    // string:"/org/open_power/sensors/aggregation/per_30s" int32:0
-    // array:string:"org.open_power.Sensor.Aggregation.History.Average"
-    //
-    // dbus-send
-    // --system --print-reply --dest=xyz.openbmc_project.ObjectMapper
-    // /xyz/openbmc_project/object_mapper
-    // xyz.openbmc_project.ObjectMapper.GetSubTree
-    // string:"/org/open_power/sensors/aggregation/per_30s" int32:0
-    // array:string:"org.open_power.Sensor.Aggregation.History.Maximum"
+
     const std::string averageInterface =
         "org.open_power.Sensor.Aggregation.History.Average";
     const std::string maximumInterface =
@@ -166,210 +155,7 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
 
     getValues2(aResp, chassisID, powerSupplyID, averageInterface);
     getValues2(aResp, chassisID, powerSupplyID, maximumInterface);
-
-#if 0
->>>>>>> 5d19ca51... add date/average/max to input history array
-    auto averagePath = "/org/open_power/sensors/aggregation/per_30s/" +
-                       powerSupplyID + "_input_power/average";
-    auto maximumPath = "/org/open_power/sensors/aggregation/per_30s/" +
-                       powerSupplyID + "_input_power/maximum";
-
-    crow::connections::systemBus->async_method_call(
-        [aResp, powerSupplyID, averagePath](
-            const boost::system::error_code ec,
-            const std::vector<std::pair<std::string, std::vector<std::string>>>&
-                object) {
-            if (ec)
-            {
-                BMCWEB_LOG_DEBUG << "DBUS response error";
-                messages::internalError(aResp->res);
-                return;
-            }
-
-            for (const auto& [serviceName, interfaceList] : object)
-            {
-                for (const auto& interface : interfaceList)
-                {
-                    if (interface ==
-                        "org.open_power.Sensor.Aggregation.History.Average")
-                    {
-                        crow::connections::systemBus->async_method_call(
-                            [aResp, powerSupplyID](
-                                const boost::system::error_code ec2,
-                                const std::variant<std::vector<std::tuple<
-                                    std::uint64_t, std::int64_t>>>& valuesRsp) {
-                                if (ec2)
-                                {
-                                    BMCWEB_LOG_DEBUG << "DBUS response error";
-                                    messages::internalError(aResp->res);
-                                    return;
-                                }
-
-                                const std::vector<
-                                    std::tuple<std::uint64_t, std::int64_t>>*
-                                    valuesPtr =
-                                        std::get_if<std::vector<std::tuple<
-                                            std::uint64_t, std::int64_t>>>(
-                                            &valuesRsp);
-                                if (valuesPtr != nullptr)
-                                {
-                                    nlohmann::json& dates =
-                                        aResp->res
-                                            .jsonValue["Oem"]["IBM"]
-                                                      ["InputPowerHistoryItem"]
-                                                      ["Date"];
-                                    nlohmann::json& averages =
-                                        aResp->res
-                                            .jsonValue["Oem"]["IBM"]
-                                                      ["InputPowerHistoryItem"]
-                                                      ["Average"];
-
-                                    for (const auto& values : *valuesPtr)
-                                    {
-                                        // The first value returned is the
-                                        // timestamp, it is in milliseconds
-                                        // since the Epoch. Divide that by 1000,
-                                        // to get date/time via seconds since
-                                        // the Epoch.
-                                        dates.push_back(
-                                            crow::utility::getDateTime(
-                                                static_cast<std::time_t>(
-                                                    (std::get<0>(values) /
-                                                     1000))));
-                                        // The second value returned is in
-                                        // watts. It is the average watts this
-                                        // power supply has used in a 30 second
-                                        // interval.
-                                        averages.push_back(std::get<1>(values));
-                                    }
-                                }
-                                else
-                                {
-                                    BMCWEB_LOG_ERROR
-                                        << "Failed to find power supply input "
-                                           "history Values data for:"
-                                        << powerSupplyID;
-                                }
-                            },
-                            serviceName, averagePath,
-                            "org.freedesktop.DBus.Properties", "Get", interface,
-                            "Values");
-                    }
-                }
-            }
-        },
-        "xyz.openbmc_project.ObjectMapper",
-        "/xyz/openbmc_project/object_mapper",
-        "xyz.openbmc_project.ObjectMapper", "GetObject", averagePath,
-        std::array<const char*, 1>{
-            "org.open_power.Sensor.Aggregation.History.Average"});
-#endif
 }
-
-#if 0
-/**
- * @brief Get power supply maximum and date values given chassis and power
- * supply IDs.
- *
- * @param[in] aResp - Shared pointer for asynchronous calls.
- * @param[in] chassisID - Chassis to which the values are associated.
- * @param[in] powerSupplyID - Power supply to which the values are associated.
- *
- * @return None.
- */
-inline void getMaxValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
-                         const std::string& chassisID,
-                         const std::string& powerSupplyID)
-{
-    BMCWEB_LOG_DEBUG << "Get power supply maximum input power values";
-    BMCWEB_LOG_DEBUG << "ChassisID: " << chassisID;
-    BMCWEB_LOG_DEBUG << "PowerSupplyID: " << powerSupplyID;
-
-    // Setup Max as an array.
-    aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"]["Maximum"] =
-        nlohmann::json::array();
-
-    auto maximumPath = "/org/open_power/sensors/aggregation/per_30s/" +
-                       powerSupplyID + "_input_power/maximum";
-
-    crow::connections::systemBus->async_method_call(
-        [aResp, powerSupplyID, maximumPath](
-            const boost::system::error_code ec,
-            const std::vector<std::pair<std::string, std::vector<std::string>>>&
-                object) {
-            if (ec)
-            {
-                BMCWEB_LOG_DEBUG << "DBUS response error";
-                messages::internalError(aResp->res);
-                return;
-            }
-
-            for (const auto& [serviceName, interfaceList] : object)
-            {
-                for (const auto& interface : interfaceList)
-                {
-                    if (interface ==
-                        "org.open_power.Sensor.Aggregation.History.Maximum")
-                    {
-                        crow::connections::systemBus->async_method_call(
-                            [aResp, powerSupplyID](
-                                const boost::system::error_code ec2,
-                                const std::variant<std::vector<std::tuple<
-                                    std::uint64_t, std::int64_t>>>& valuesRsp) {
-                                if (ec2)
-                                {
-                                    BMCWEB_LOG_DEBUG << "DBUS response error";
-                                    messages::internalError(aResp->res);
-                                    return;
-                                }
-
-                                const std::vector<
-                                    std::tuple<std::uint64_t, std::int64_t>>*
-                                    valuesPtr =
-                                        std::get_if<std::vector<std::tuple<
-                                            std::uint64_t, std::int64_t>>>(
-                                            &valuesRsp);
-                                if (valuesPtr != nullptr)
-                                {
-                                    nlohmann::json& maximums =
-                                        aResp->res
-                                            .jsonValue["Oem"]["IBM"]
-                                                      ["InputPowerHistoryItem"]
-                                                      ["Maximum"];
-                                    for (const auto& values : *valuesPtr)
-                                    {
-                                        // The first value returned is the
-                                        // timestamp, already handled in
-                                        // getAverageValues().
-                                        // The second value returned is in
-                                        // watts. It is the maximum watts this
-                                        // power supply has used in a 30 second
-                                        // interval.
-                                        maximums.push_back(std::get<1>(values));
-                                    }
-                                }
-                                else
-                                {
-                                    BMCWEB_LOG_ERROR
-                                        << "Failed to find power supply input "
-                                           "history Values data for:"
-                                        << powerSupplyID;
-                                }
-                            },
-                            serviceName, maximumPath,
-                            "org.freedesktop.DBus.Properties", "Get", interface,
-                            "Values");
-                    }
-                }
-            }
-        },
-        "xyz.openbmc_project.ObjectMapper",
-        "/xyz/openbmc_project/object_mapper",
-        "xyz.openbmc_project.ObjectMapper", "GetObject", maximumPath,
-        std::array<const char*, 1>{
-            "org.open_power.Sensor.Aggregation.History.Maximum"});
-}
-#endif
 
 /**
  * Systems derived class for delivering OemPowerSupplyMetrics Schema.
