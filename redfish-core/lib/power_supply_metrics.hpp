@@ -41,8 +41,8 @@ inline void getValues2(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                 //           5..............6
                 // I know it is average... I need to match the psu?
                 auto psuMatchStr = powerSupplyID + "_input_power";
-                BMCWEB_LOG_DEBUG << "psuInputPowerStr " << psuMatchStr;
                 std::string psuInputPowerStr;
+
                 if (!dbus::utility::getNthStringFromPath(validPath, 5,
                                                          psuInputPowerStr))
                 {
@@ -55,7 +55,7 @@ inline void getValues2(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                 {
                     BMCWEB_LOG_DEBUG << "validPath " << validPath;
                     BMCWEB_LOG_DEBUG << "connectionName " << connectionName;
-                    BMCWEB_LOG_DEBUG << "psuInputPowerStr " << psuInputPowerStr;
+
                     crow::connections::systemBus->async_method_call(
                         [aResp, chassisID, powerSupplyID](
                             const boost::system::error_code ec2,
@@ -94,7 +94,7 @@ inline void getValues2(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                                 // watts. It is the average watts this
                                 // power supply has used in a 30 second
                                 // interval.
-                                BMCWEB_LOG_DEBUG << "Average/Maximum: "
+                                BMCWEB_LOG_DEBUG << "Values: "
                                                  << std::get<1>(values);
                             }
                             //...
@@ -125,10 +125,9 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                       const std::string& chassisID,
                       const std::string& powerSupplyID)
 {
-    BMCWEB_LOG_DEBUG << "Get power supply average input power values";
-    // BMCWEB_LOG_DEBUG << "ChassisID: " << chassisID;
-    // BMCWEB_LOG_DEBUG << "PowerSupplyID: " << powerSupplyID;
-    // Setup date/timestamp and average values as arrays.
+    BMCWEB_LOG_DEBUG
+        << "Get power supply date/average/maximum input power values";
+    // Setup date/timestamp, average, and maximum values to array.
     aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"]["@odata.type"] =
         "#OemPowerSupplyMetric.InputPowerHistoryItem";
     // aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"] =
@@ -140,10 +139,10 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
     nlohmann::json& inputPowerHistoryItemArray =
         jsonResponse["Oem"]["IBM"]["InputPowerHistoryItem"];
     inputPowerHistoryItemArray = nlohmann::json::array();
-    auto date = crow::utility::getDateTime(
-        static_cast<std::time_t>((1652222513979 / 1000)));
     {
         BMCWEB_LOG_DEBUG << "Fake values";
+        auto date = crow::utility::getDateTime(
+            static_cast<std::time_t>((1652222513979 / 1000)));
         inputPowerHistoryItemArray.push_back(
             {{"Date", date}, {"Average", 25}, {"Maximum", 26}});
     }
