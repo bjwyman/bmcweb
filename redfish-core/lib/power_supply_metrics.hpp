@@ -7,6 +7,10 @@ using averageMaxEntry = std::tuple<std::uint64_t, std::int64_t>;
 using historyEntry = std::tuple<std::uint64_t, std::int64_t, std::int64_t>;
 using averageMaxArray = std::vector<averageMaxEntry>;
 using historyArray = std::vector<historyEntry>;
+const std::string averageInterface =
+    "org.open_power.Sensor.Aggregation.History.Average";
+const std::string maximumInterface =
+    "org.open_power.Sensor.Aggregation.History.Maximum";
 
 /**
  * @brief Get power supply average and date values given chassis and power
@@ -29,35 +33,16 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
     aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"]["@odata.type"] =
         "#OemPowerSupplyMetric.InputPowerHistoryItem";
     nlohmann::json& jsonResponse = aResp->res.jsonValue;
-    nlohmann::json& inputPowerHistoryItemArray =
-        jsonResponse["Oem"]["IBM"]["InputPowerHistoryItem"];
-    inputPowerHistoryItemArray = nlohmann::json::array();
-    {
-        BMCWEB_LOG_DEBUG << "Fake values";
-        auto date = crow::utility::getDateTime(
-            static_cast<std::time_t>((1652222513979 / 1000)));
-        inputPowerHistoryItemArray.push_back(
-            {{"Date", date}, {"Average", 25}, {"Maximum", 26}});
-    }
 
-    const std::string averageInterface =
-        "org.open_power.Sensor.Aggregation.History.Average";
-    const std::string maximumInterface =
-        "org.open_power.Sensor.Aggregation.History.Maximum";
-
-    // averageMaxArray averageValues;
-    // getValues2(aResp, chassisID, powerSupplyID, averageInterface,
-    //           averageValues);
-    // averageMaxArray maximumValues;
-    // getValues2(aResp, chassisID, powerSupplyID, maximumInterface,
-    //           maximumValues);
+    averageMaxArray averageValues;
+    averageMaxArray maximumValues;
 
     const std::array<const char*, 2> interfaces = {
         "org.open_power.Sensor.Aggregation.History.Average",
         "org.open_power.Sensor.Aggregation.History.Maximum"};
 
     crow::connections::systemBus->async_method_call(
-        [aResp, chassisID, powerSupplyID](
+        [aResp, chassisID, powerSupplyID, averageValues, maximumValues](
             const boost::system::error_code ec,
             const std::vector<std::pair<
                 std::string,
@@ -121,7 +106,8 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                                 << " interfaceName: " << interfaceName;
 
                             crow::connections::systemBus->async_method_call(
-                                [aResp, serviceName, validPath, interfaceName](
+                                [aResp, serviceName, validPath, interfaceName,
+                                 averageValues, maximumValues](
                                     const boost::system::error_code ec2,
                                     const std::variant<averageMaxArray>&
                                         intfValues) {
@@ -145,23 +131,44 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                                     {
                                         // The first value returned is the
                                         // timestamp, it is in milliseconds
-                                        // since the Epoch. Divide that by 1000,
-                                        // to get date/time via seconds since
-                                        // the Epoch.
+                                        // since the Epoch.
+                                        auto dateTime = std::get<0>(values);
+                                        // The second value returned is in
+                                        // watts. It is the average or maximum
+                                        // watts this power supply has used in a
+                                        // 30 second interval.
+                                        auto value = std::get<1>(values);
+
                                         BMCWEB_LOG_DEBUG
                                             << "DateTime: "
                                             << crow::utility::getDateTime(
                                                    static_cast<std::time_t>(
-                                                       (std::get<0>(values) /
-                                                        1000)));
-                                        // The second value returned is in
-                                        // watts. It is the average watts this
-                                        // power supply has used in a 30 second
-                                        // interval.
-                                        BMCWEB_LOG_DEBUG << "Values: "
-                                                         << std::get<1>(values);
+                                                       dateTime / 1000));
+                                        BMCWEB_LOG_DEBUG << "Values: " << value;
+
+                                        if (interfaceName == averageInterface)
+                                        {
+                                            // averageValues.push_back(
+                                            //    averageMaxEntry(dateTime,
+                                            //                    value));
+                                            averageValues.emplace_back(
+                                                averageMaxEntry(dateTime,
+                                                                value));
+                                            // averageValues.push_back(
+                                            //    std::tuple<uint64_t, int64_t>(
+                                            //        dateTime, value));
+                                        }
+                                        else if (interfaceName ==
+                                                 maximumInterface)
+                                        {
+                                            maximumValues.emplace_back(
+                                                averageMaxEntry(dateTime,
+                                                                value));
+                                            // maximumValues.push_back(
+                                            //    std::tuple<uint64_t, int64_t>(
+                                            //        dateTime, value));
+                                        }
                                     }
-                                    //...
                                 },
                                 serviceName, validPath,
                                 "org.freedesktop.DBus.Properties", "Get",
@@ -169,82 +176,38 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                         }
                     }
                 }
-            // BMCWEB_LOG_DEBUG << "Got serviceName: " << serviceName;
-#if 0
-                const std::string& connectionName = serviceName[0].first;
-                // validPath -> {psu}_input_power
-                // 5 below comes from
-                // /org/open_power/sensors/aggregation/per_30s/
-                //   0      1         2         3         4
-                // .../{psu}_input_power/[average,maximum]
-                //           5..............6
-                // I know it is average... I need to match the psu?
-                auto psuMatchStr = powerSupplyID + "_input_power";
-                std::string psuInputPowerStr;
-
-                if (!dbus::utility::getNthStringFromPath(validPath, 5,
-                                                         psuInputPowerStr))
-                {
-                    BMCWEB_LOG_ERROR << "Got invalid path " << validPath;
-                    messages::invalidObject(aResp->res, validPath);
-                    return;
-                }
-
-                if (psuInputPowerStr == psuMatchStr)
-                {
-                    BMCWEB_LOG_DEBUG << "validPath " << validPath;
-                    BMCWEB_LOG_DEBUG << "connectionName " << connectionName;
-
-                    crow::connections::systemBus->async_method_call(
-                        [aResp, chassisID, powerSupplyID](
-                            const boost::system::error_code ec2,
-                            const std::variant<averageMaxArray>& intfValues) {
-                            if (ec2)
-                            {
-                                BMCWEB_LOG_DEBUG << "D-Bus response error";
-                                messages::internalError(aResp->res);
-                                return;
-                            }
-                            const averageMaxArray* intfValuesPtr =
-                                std::get_if<averageMaxArray>(&intfValues);
-                            if (intfValuesPtr == nullptr)
-                            {
-                                messages::internalError(aResp->res);
-                                return;
-                            }
-
-                            for (const auto& values : *intfValuesPtr)
-                            {
-                                // The first value returned is the
-                                // timestamp, it is in milliseconds
-                                // since the Epoch. Divide that by 1000,
-                                // to get date/time via seconds since
-                                // the Epoch.
-                                BMCWEB_LOG_DEBUG
-                                    << "DateTime: "
-                                    << crow::utility::getDateTime(
-                                           static_cast<std::time_t>(
-                                               (std::get<0>(values) / 1000)));
-                                // The second value returned is in
-                                // watts. It is the average watts this
-                                // power supply has used in a 30 second
-                                // interval.
-                                BMCWEB_LOG_DEBUG << "Values: "
-                                                 << std::get<1>(values);
-                            }
-                            //...
-                        },
-                        connectionName, validPath,
-                        "org.freedesktop.DBus.Properties", "Get", interfaceName,
-                        "Values");
-                }
-#endif
             }
         },
         "xyz.openbmc_project.ObjectMapper",
         "/xyz/openbmc_project/object_mapper",
         "xyz.openbmc_project.ObjectMapper", "GetSubTree",
         "/org/open_power/sensors/aggregation/per_30s", 0, interfaces);
+
+    // Take date/time and average from averageValues and maximum from
+    // maximumValues to populate each inputHistoryItem entry.
+    nlohmann::json& inputPowerHistoryItemArray =
+        jsonResponse["Oem"]["IBM"]["InputPowerHistoryItem"];
+    inputPowerHistoryItemArray = nlohmann::json::array();
+
+    std::vector<averageMaxEntry>::const_iterator average =
+        averageValues.begin();
+    std::vector<averageMaxEntry>::const_iterator maximum =
+        maximumValues.begin();
+    for (; average != averageValues.end() && maximum != maximumValues.end();
+         average++, maximum++)
+    {
+
+        // The first value returned is the timestamp, it is in milliseconds
+        // since the Epoch. Divide that by 1000, to get date/time via seconds
+        // since the Epoch (string).
+        // Second value from average and maximum is just an integer type value
+        // representing watts.
+        inputPowerHistoryItemArray.push_back(
+            {{"Date", crow::utility::getDateTime(static_cast<std::time_t>(
+                          (std::get<0>(*average) / 1000)))},
+             {"Average", std::get<1>(*average)},
+             {"Maximum", std::get<1>(*maximum)}});
+    }
 }
 
 /**
