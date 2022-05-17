@@ -52,7 +52,6 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
     // getValues2(aResp, chassisID, powerSupplyID, maximumInterface,
     //           maximumValues);
 
-    // const std::array<std::string, 1> interfaces = {interfaceName};
     const std::array<const char*, 2> interfaces = {
         "org.open_power.Sensor.Aggregation.History.Average",
         "org.open_power.Sensor.Aggregation.History.Maximum"};
@@ -71,9 +70,9 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                 return;
             }
 
-            for (const auto& [objectPath, serviceName] : intfSubTree)
+            for (const auto& [objectPath, connectionNames] : intfSubTree)
             {
-                if (objectPath.empty() || serviceName.size() != 1)
+                if (objectPath.empty())
                 {
                     BMCWEB_LOG_DEBUG << "Error getting D-Bus object!";
                     messages::internalError(aResp->res);
@@ -81,8 +80,50 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                 }
 
                 const std::string& validPath = objectPath;
+                auto psuMatchStr = powerSupplyID + "_input_power";
+                std::string psuInputPowerStr;
+                // validPath -> {psu}_input_power
+                // 5 below comes from
+                // /org/open_power/sensors/aggregation/per_30s/
+                //   0      1         2         3         4
+                // .../{psu}_input_power/[average,maximum]
+                //           5..............6
+                if (!dbus::utility::getNthStringFromPath(validPath, 5,
+                                                         psuInputPowerStr))
+                {
+                    BMCWEB_LOG_ERROR << "Got invalid path " << validPath;
+                    messages::invalidObject(aResp->res, validPath);
+                    return;
+                }
+
+                if (psuInputPowerStr != psuMatchStr)
+                {
+                    // not this power supply, continue to next objectPath...
+                    continue;
+                }
 
                 BMCWEB_LOG_DEBUG << "Got validPath: " << validPath;
+                BMCWEB_LOG_DEBUG << "connectionNames.size(): "
+                                 << connectionNames.size();
+                for (const auto& connection : connectionNames)
+                {
+                    BMCWEB_LOG_DEBUG << "connection.first" << connection.first;
+
+                    for (const auto& interfaceName : connection.second)
+                    {
+                        BMCWEB_LOG_DEBUG << "interfaceName: " << interfaceName;
+                        // any_of(interfaces) ?
+                        if ((interfaceName == "org.open_power.Sensor."
+                                              "Aggregation.History.Average") ||
+                            (interfaceName == "org.open_power.Sensor."
+                                              "Aggregation.History.Maximum"))
+                        {
+                            BMCWEB_LOG_DEBUG << "Get Values for "
+                                             << interfaceName;
+                            //...
+                        }
+                    }
+                }
             // BMCWEB_LOG_DEBUG << "Got serviceName: " << serviceName;
 #if 0
                 const std::string& connectionName = serviceName[0].first;
