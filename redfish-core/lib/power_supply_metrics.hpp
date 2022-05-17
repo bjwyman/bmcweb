@@ -103,23 +103,70 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                 }
 
                 BMCWEB_LOG_DEBUG << "Got validPath: " << validPath;
-                BMCWEB_LOG_DEBUG << "connectionNames.size(): "
-                                 << connectionNames.size();
                 for (const auto& connection : connectionNames)
                 {
-                    BMCWEB_LOG_DEBUG << "connection.first: "
-                                     << connection.first;
                     auto serviceName = connection.first;
 
                     for (const auto& interfaceName : connection.second)
                     {
-                        // BMCWEB_LOG_DEBUG << "interfaceName: " <<
-                        // interfaceName;
                         // any_of(interfaces) ?
-                        if ((interfaceName == "org.open_power.Sensor."
-                                              "Aggregation.History.Average") ||
-                            (interfaceName == "org.open_power.Sensor."
-                                              "Aggregation.History.Maximum"))
+                        if (interfaceName ==
+                            "org.open_power.Sensor.Aggregation.History.Average")
+                        {
+                            BMCWEB_LOG_DEBUG
+                                << "Get Values from serviceName: "
+                                << serviceName << " objectPath: " << validPath
+                                << " interfaceName: " << interfaceName;
+
+                            crow::connections::systemBus->async_method_call(
+                                [aResp, serviceName, validPath, interfaceName](
+                                    const boost::system::error_code ec2,
+                                    const std::variant<averageMaxArray>&
+                                        intfValues) {
+                                    if (ec2)
+                                    {
+                                        BMCWEB_LOG_DEBUG
+                                            << "D-Bus response error";
+                                        messages::internalError(aResp->res);
+                                        return;
+                                    }
+                                    const averageMaxArray* intfValuesPtr =
+                                        std::get_if<averageMaxArray>(
+                                            &intfValues);
+                                    if (intfValuesPtr == nullptr)
+                                    {
+                                        messages::internalError(aResp->res);
+                                        return;
+                                    }
+
+                                    for (const auto& values : *intfValuesPtr)
+                                    {
+                                        // The first value returned is the
+                                        // timestamp, it is in milliseconds
+                                        // since the Epoch. Divide that by 1000,
+                                        // to get date/time via seconds since
+                                        // the Epoch.
+                                        BMCWEB_LOG_DEBUG
+                                            << "DateTime: "
+                                            << crow::utility::getDateTime(
+                                                   static_cast<std::time_t>(
+                                                       (std::get<0>(values) /
+                                                        1000)));
+                                        // The second value returned is in
+                                        // watts. It is the average watts this
+                                        // power supply has used in a 30 second
+                                        // interval.
+                                        BMCWEB_LOG_DEBUG << "Values: "
+                                                         << std::get<1>(values);
+                                    }
+                                    //...
+                                },
+                                serviceName, validPath,
+                                "org.freedesktop.DBus.Properties", "Get",
+                                interfaceName, "Values");
+                        }
+                        else if (interfaceName == "org.open_power.Sensor."
+                                                  "Aggregation.History.Maximum")
                         {
                             BMCWEB_LOG_DEBUG
                                 << "Get Values from serviceName: "
