@@ -127,7 +127,7 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                                         return;
                                     }
 
-                                    for (const auto& values : *intfValuesPtr)
+                                    for (auto& values : *intfValuesPtr)
                                     {
                                         // The first value returned is the
                                         // timestamp, it is in milliseconds
