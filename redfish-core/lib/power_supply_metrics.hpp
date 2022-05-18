@@ -161,9 +161,9 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                                         else if (interfaceName ==
                                                  maximumInterface)
                                         {
-                                            maximumValues.emplace_back(
-                                                averageMaxEntry(dateTime,
-                                                                value));
+                                            maximumValues.push_back(
+                                                std::move(averageMaxEntry(
+                                                    dateTime, value)));
                                             // maximumValues.push_back(
                                             //    std::tuple<uint64_t, int64_t>(
                                             //        dateTime, value));
