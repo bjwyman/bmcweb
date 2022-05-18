@@ -13,6 +13,185 @@ const std::string maximumInterface =
     "org.open_power.Sensor.Aggregation.History.Maximum";
 
 /**
+ * @brief Parse date/time, average, and maximum values into response.
+ *
+ * @param[in/out] aResp - Shared pointer for asynchronous calls.
+ * @param[in] averageValues - populated array of date/time and average values.
+ *
+ * @return None.
+ */
+inline void parseAverageMaximum(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+                                averageMaxArray averageValues,
+                                averageMaxArray maximumValues)
+{
+    // that inner part of the lambda stuff with push_back()
+    // Take date/time and average from averageValues and maximum from
+    // maximumValues to populate each inputHistoryItem entry.
+    nlohmann::json& jsonResponse = aResp->res.jsonValue;
+    nlohmann::json& inputPowerHistoryItemArray =
+        jsonResponse["Oem"]["IBM"]["InputPowerHistoryItem"];
+    inputPowerHistoryItemArray = nlohmann::json::array();
+
+    std::vector<averageMaxEntry>::const_iterator average =
+        averageValues.begin();
+    std::vector<averageMaxEntry>::const_iterator maximum =
+        maximumValues.begin();
+    for (; average != averageValues.end() && maximum != maximumValues.end();
+         average++, maximum++)
+    {
+
+        // The first value returned is the timestamp, it is in milliseconds
+        // since the Epoch. Divide that by 1000, to get date/time via seconds
+        // since the Epoch (string).
+        // Second value from average and maximum is just an integer type value
+        // representing watts.
+        inputPowerHistoryItemArray.push_back(
+            {{"Date", crow::utility::getDateTime(static_cast<std::time_t>(
+                          (std::get<0>(*average) / 1000)))},
+             {"Average", std::get<1>(*average)},
+             {"Maximum", std::get<1>(*maximum)}});
+    }
+}
+
+/**
+ * @brief Gets the values from the Maximum interface and populates array.
+ *
+ * After getting maximum values, proceed to populating Redfish JSON response
+ * properties.
+ *
+ * @param[in/out] aResp - Shared pointer for asynchronous calls.
+ * @param[in] serviceName - The service providing the Maximum interface.
+ * @param[in] maximumPath - The object path the Maximum interface is on.
+ * @param[in] averageValues - Populated vector of date/time and average values.
+ *
+ * @return None.
+ */
+inline void getMaximumValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+                             const std::string& serviceName,
+                             const std::string& maximumPath,
+                             averageMaxArray averageValues)
+{
+    // gets values from Maximum interface, call parseAverageMaximum() to plop
+    // in the array.
+    // Do code or call code to push up into JSON response.
+
+    BMCWEB_LOG_DEBUG << "Get Values from serviceName: " << serviceName
+                     << " objectPath: " << maximumPath
+                     << " interfaceName: " << maximumInterface;
+
+    crow::connections::systemBus->async_method_call(
+        [aResp, serviceName, maximumPath, averageValues](
+            const boost::system::error_code ec2,
+            const std::variant<averageMaxArray>& intfValues) mutable {
+            if (ec2)
+            {
+                BMCWEB_LOG_DEBUG << "D-Bus response error";
+                messages::internalError(aResp->res);
+                return;
+            }
+            const averageMaxArray* intfValuesPtr =
+                std::get_if<averageMaxArray>(&intfValues);
+            if (intfValuesPtr == nullptr)
+            {
+                messages::internalError(aResp->res);
+                return;
+            }
+
+            averageMaxArray maximumValues;
+
+            for (const auto& values : *intfValuesPtr)
+            {
+                // The first value returned is the timestamp, it is in
+                // milliseconds since the Epoch.
+                auto dateTime = std::get<0>(values);
+                // The second value returned is in watts. The maximum watts this
+                // power supply has used in a 30 second interval.
+                auto value = std::get<1>(values);
+
+                BMCWEB_LOG_DEBUG
+                    << "Date/Time: "
+                    << crow::utility::getDateTime(
+                           static_cast<std::time_t>(dateTime / 1000));
+                BMCWEB_LOG_DEBUG << "Maximum Value: " << value;
+
+                maximumValues.emplace_back(dateTime, value);
+            }
+
+            parseAverageMaximum(aResp, averageValues, maximumValues);
+        },
+        serviceName, maximumPath, "org.freedesktop.DBus.Properties", "Get",
+        maximumInterface, "Values");
+}
+
+/**
+ * @brief Gets the values from the Average interface and populates array.
+ *
+ * After getting average values, proceed to get maximum values.
+ *
+ * @param[in] aResp - Shared pointer for asynchronous calls.
+ *
+ * @return None.
+ */
+inline void
+    getAverageMaximumValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+                            const std::string& serviceName,
+                            const std::string& averagePath,
+                            const std::string& maximumPath)
+{
+    // gets values from Average interface, call parseAverageMaximum() to plop in
+    // the array.
+    //
+    // Call getMaximumValues() and pass averageValues by copy.
+    BMCWEB_LOG_DEBUG << "Get Values from serviceName: " << serviceName
+                     << " objectPath: " << averagePath
+                     << " interfaceName: " << averageInterface;
+
+    crow::connections::systemBus->async_method_call(
+        [aResp, serviceName, averagePath,
+         maximumPath](const boost::system::error_code ec2,
+                      const std::variant<averageMaxArray>& intfValues) mutable {
+            if (ec2)
+            {
+                BMCWEB_LOG_DEBUG << "D-Bus response error";
+                messages::internalError(aResp->res);
+                return;
+            }
+
+            const averageMaxArray* intfValuesPtr =
+                std::get_if<averageMaxArray>(&intfValues);
+            if (intfValuesPtr == nullptr)
+            {
+                messages::internalError(aResp->res);
+                return;
+            }
+
+            // Populate below with data read from D-Bus.
+            averageMaxArray averageValues;
+            for (const auto& values : *intfValuesPtr)
+            {
+                // The first value returned is the timestamp, it is in
+                // milliseconds since the Epoch.
+                auto dateTime = std::get<0>(values);
+                // The second value returned is in watts. It is the average
+                // watts this power supply has used in a 30 second interval.
+                auto value = std::get<1>(values);
+
+                BMCWEB_LOG_DEBUG
+                    << "DateTime: "
+                    << crow::utility::getDateTime(
+                           static_cast<std::time_t>(dateTime / 1000));
+                BMCWEB_LOG_DEBUG << "Values: " << value;
+
+                averageValues.emplace_back(dateTime, value);
+            }
+
+            getMaximumValues(aResp, serviceName, maximumPath, averageValues);
+        },
+        serviceName, averagePath, "org.freedesktop.DBus.Properties", "Get",
+        averageInterface, "Values");
+}
+
+/**
  * @brief Get power supply average and date values given chassis and power
  * supply IDs.
  *
@@ -32,28 +211,28 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
     // It will have 0 to many date/timestamp, average, and maximum entries.
     aResp->res.jsonValue["Oem"]["IBM"]["InputPowerHistoryItem"]["@odata.type"] =
         "#OemPowerSupplyMetric.InputPowerHistoryItem";
-    nlohmann::json& jsonResponse = aResp->res.jsonValue;
-
-    averageMaxArray averageValues;
-    averageMaxArray maximumValues;
 
     const std::array<const char*, 2> interfaces = {
         "org.open_power.Sensor.Aggregation.History.Average",
         "org.open_power.Sensor.Aggregation.History.Maximum"};
 
     crow::connections::systemBus->async_method_call(
-        [aResp, chassisID, powerSupplyID, averageValues, maximumValues](
+        [aResp, chassisID, powerSupplyID](
             const boost::system::error_code ec,
             const std::vector<std::pair<
                 std::string,
                 std::vector<std::pair<std::string, std::vector<std::string>>>>>&
-                intfSubTree) {
+                intfSubTree) mutable {
             if (ec)
             {
                 BMCWEB_LOG_DEBUG << "D-Bus response error on GetSubTree " << ec;
                 messages::internalError(aResp->res);
                 return;
             }
+
+            std::string serviceName;
+            std::string averagePath;
+            std::string maximumPath;
 
             for (const auto& [objectPath, connectionNames] : intfSubTree)
             {
@@ -90,124 +269,31 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                 BMCWEB_LOG_DEBUG << "Got validPath: " << validPath;
                 for (const auto& connection : connectionNames)
                 {
-                    auto serviceName = connection.first;
+                    serviceName = connection.first;
 
                     for (const auto& interfaceName : connection.second)
                     {
-                        // any_of(interfaces) ?
-                        if ((interfaceName == "org.open_power.Sensor."
-                                              "Aggregation.History.Average") ||
-                            (interfaceName == "org.open_power.Sensor."
-                                              "Aggregation.History.Maximum"))
+                        if (interfaceName == "org.open_power.Sensor."
+                                             "Aggregation.History.Average")
                         {
-                            BMCWEB_LOG_DEBUG
-                                << "Get Values from serviceName: "
-                                << serviceName << " objectPath: " << validPath
-                                << " interfaceName: " << interfaceName;
-
-                            crow::connections::systemBus->async_method_call(
-                                [aResp, serviceName, validPath, interfaceName,
-                                 averageValues, maximumValues](
-                                    const boost::system::error_code ec2,
-                                    const std::variant<averageMaxArray>&
-                                        intfValues) {
-                                    if (ec2)
-                                    {
-                                        BMCWEB_LOG_DEBUG
-                                            << "D-Bus response error";
-                                        messages::internalError(aResp->res);
-                                        return;
-                                    }
-                                    const averageMaxArray* intfValuesPtr =
-                                        std::get_if<averageMaxArray>(
-                                            &intfValues);
-                                    if (intfValuesPtr == nullptr)
-                                    {
-                                        messages::internalError(aResp->res);
-                                        return;
-                                    }
-
-                                    for (auto& values : *intfValuesPtr)
-                                    {
-                                        // The first value returned is the
-                                        // timestamp, it is in milliseconds
-                                        // since the Epoch.
-                                        auto dateTime = std::get<0>(values);
-                                        // The second value returned is in
-                                        // watts. It is the average or maximum
-                                        // watts this power supply has used in a
-                                        // 30 second interval.
-                                        auto value = std::get<1>(values);
-
-                                        BMCWEB_LOG_DEBUG
-                                            << "DateTime: "
-                                            << crow::utility::getDateTime(
-                                                   static_cast<std::time_t>(
-                                                       dateTime / 1000));
-                                        BMCWEB_LOG_DEBUG << "Values: " << value;
-
-                                        if (interfaceName == averageInterface)
-                                        {
-                                            // averageValues.push_back(
-                                            //    averageMaxEntry(dateTime,
-                                            //                    value));
-                                            averageValues.emplace_back(
-                                                averageMaxEntry(dateTime,
-                                                                value));
-                                            // averageValues.push_back(
-                                            //    std::tuple<uint64_t, int64_t>(
-                                            //        dateTime, value));
-                                        }
-                                        else if (interfaceName ==
-                                                 maximumInterface)
-                                        {
-                                            maximumValues.push_back(
-                                                std::move(averageMaxEntry(
-                                                    dateTime, value)));
-                                            // maximumValues.push_back(
-                                            //    std::tuple<uint64_t, int64_t>(
-                                            //        dateTime, value));
-                                        }
-                                    }
-                                },
-                                serviceName, validPath,
-                                "org.freedesktop.DBus.Properties", "Get",
-                                interfaceName, "Values");
+                            averagePath = validPath;
+                        }
+                        else if (interfaceName == "org.open_power.Sensor."
+                                                  "Aggregation.History.Maximum")
+                        {
+                            maximumPath = validPath;
                         }
                     }
                 }
             }
+
+            getAverageMaximumValues(aResp, serviceName, averagePath,
+                                    maximumPath);
         },
         "xyz.openbmc_project.ObjectMapper",
         "/xyz/openbmc_project/object_mapper",
         "xyz.openbmc_project.ObjectMapper", "GetSubTree",
         "/org/open_power/sensors/aggregation/per_30s", 0, interfaces);
-
-    // Take date/time and average from averageValues and maximum from
-    // maximumValues to populate each inputHistoryItem entry.
-    nlohmann::json& inputPowerHistoryItemArray =
-        jsonResponse["Oem"]["IBM"]["InputPowerHistoryItem"];
-    inputPowerHistoryItemArray = nlohmann::json::array();
-
-    std::vector<averageMaxEntry>::const_iterator average =
-        averageValues.begin();
-    std::vector<averageMaxEntry>::const_iterator maximum =
-        maximumValues.begin();
-    for (; average != averageValues.end() && maximum != maximumValues.end();
-         average++, maximum++)
-    {
-
-        // The first value returned is the timestamp, it is in milliseconds
-        // since the Epoch. Divide that by 1000, to get date/time via seconds
-        // since the Epoch (string).
-        // Second value from average and maximum is just an integer type value
-        // representing watts.
-        inputPowerHistoryItemArray.push_back(
-            {{"Date", crow::utility::getDateTime(static_cast<std::time_t>(
-                          (std::get<0>(*average) / 1000)))},
-             {"Average", std::get<1>(*average)},
-             {"Maximum", std::get<1>(*maximum)}});
-    }
 }
 
 /**
