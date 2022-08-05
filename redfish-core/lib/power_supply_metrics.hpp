@@ -506,6 +506,8 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                         }
 
                         BMCWEB_LOG_DEBUG << "PowerSupplyID: " << powerSupplyID;
+                        BMCWEB_LOG_DEBUG << "validPowerSupplyPath: "
+                                         << *validPowerSupplyPath;
 
                         auto getInputHistoryItemHandler =
                             [asyncResp, chassisID,
