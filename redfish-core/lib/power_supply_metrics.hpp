@@ -301,165 +301,69 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
  * chassis.
  *
  * @param asyncResp     Pointer to object holding response data
- * @param chassisID     chassisID to search for input history association
- * @param powerSupplyID powerSupplyID to search for input history association
+ * @param powerSupplyPath Validated power supply path
  * @param callback      Callback for next step to get valid chassis ID
  */
 template <typename Callback>
 inline void
     getValidInputHistory(const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
-                         const std::string& chassisID,
-                         const std::string& powerSupplyID, Callback&& callback)
+                         const std::string& powerSupplyPath,
+                         Callback&& callback)
 {
     BMCWEB_LOG_DEBUG << "getValidInputHistory enter";
+    BMCWEB_LOG_DEBUG << "powerSupplyPath: " << powerSupplyPath;
 
-    const std::array<const char*, 2> interfaces = {
-        "org.open_power.Sensor.Aggregation.History.Average",
-        "org.open_power.Sensor.Aggregation.History.Maximum"};
+    auto respHandler =
+        [callback{std::move(callback)}, asyncResp, powerSupplyPath](
+            const boost::system::error_code ec,
+            const std::variant<std::vector<std::string>>& endpoints) {
+            BMCWEB_LOG_DEBUG << "getValidInputHistory respHandler enter";
 
-    auto respHandler = [callback{std::move(callback)}, asyncResp, chassisID,
-                        powerSupplyID](
-                           const boost::system::error_code ec,
-                           const std::vector<std::pair<
-                               std::string,
-                               std::vector<std::pair<
-                                   std::string, std::vector<std::string>>>>>&
-                               subtree) {
-        BMCWEB_LOG_DEBUG << "getValidInputHistory respHandler enter";
+            if (ec)
+            {
+                BMCWEB_LOG_ERROR
+                    << "getValidInputHistory respHandler D-Bus error: " << ec;
+                messages::internalError(asyncResp->res);
+                return;
+            }
 
-        if (ec)
-        {
-            BMCWEB_LOG_ERROR << "getValidInputHistory respHandler DBUS error: "
-                             << ec;
-            messages::internalError(asyncResp->res);
-            return;
-        }
+            // Set the default value to resourceNotFound, and if we confirm
+            // finding association with chassisID and powerSupplyID is correct,
+            // the error response will be cleared.
+            messages::resourceNotFound(asyncResp->res, "PowerSupplyMetrics",
+                                       "Metrics");
 
-        // Set the default value to resourceNotFound, and if we confirm finding
-        // association with chassisID and powerSupplyID is correct, the error
-        // response will be cleared.
-        messages::resourceNotFound(asyncResp->res, "PowerSupplyMetrics",
-                                   "Metrics");
+            const std::vector<std::string>* inputHistoryItem =
+                std::get_if<std::vector<std::string>>(&(endpoints));
 
-        for (const auto& object : subtree)
-        {
-            // The association of this input history item is used to
-            // determine whether it belongs to this ChassisID, and therefore
-            // is valid to include for this power supply.
-            crow::connections::systemBus->async_method_call(
-                [callback{std::move(callback)}, asyncResp, chassisID,
-                 powerSupplyID, object](
-                    const boost::system::error_code ec,
-                    const std::variant<std::vector<std::string>>& endpoints) {
-                    if (ec)
-                    {
-                        if (ec.value() == EBADR)
-                        {
-                            // This input history item has no chassis
-                            // association.
-                            BMCWEB_LOG_DEBUG
-                                << "This input history item has no chassis {"
-                                << chassisID << "} association";
-                            return;
-                        }
+            if (inputHistoryItem != nullptr)
+            {
+                // more
+                if ((*inputHistoryItem).size() == 0)
+                {
+                    BMCWEB_LOG_ERROR
+                        << "Input history item association error! ";
+                    messages::internalError(asyncResp->res);
+                    return;
+                }
 
-                        BMCWEB_LOG_ERROR << "DBUS response error";
-                        messages::internalError(asyncResp->res);
-                        return;
-                    }
+                for (const auto& objpath : *inputHistoryItem)
+                {
+                    BMCWEB_LOG_DEBUG << "objpath: " << objpath;
+                }
 
-                    const std::vector<std::string>* itemChassis =
-                        std::get_if<std::vector<std::string>>(&(endpoints));
+                const std::string& inputHistoryPath = (*inputHistoryItem)[0];
+                const std::string& serviceName = "";
 
-                    if (itemChassis != nullptr)
-                    {
-                        if ((*itemChassis).size() != 1)
-                        {
-                            BMCWEB_LOG_ERROR
-                                << "Input history item association error! ";
-                            messages::internalError(asyncResp->res);
-                            return;
-                        }
-                        std::vector<std::string> chassisPath = *itemChassis;
-                        sdbusplus::message::object_path path(chassisPath[0]);
-                        std::string chassisName = path.filename();
-                        if (chassisName != chassisID)
-                        {
-                            // The input history item does not belong to the
-                            // chassisID
-                            BMCWEB_LOG_DEBUG
-                                << "This input history item (" << chassisName
-                                << ") does not belong to the chassisID ("
-                                << chassisID << ")";
-                            return;
-                        }
+                callback(inputHistoryPath, serviceName);
+            }
+        };
 
-                        sdbusplus::message::object_path itemPath(object.first);
-                        BMCWEB_LOG_DEBUG << "itemPath(object.first): "
-                                         << object.first;
-                        const std::string itemName = itemPath.filename();
-                        const std::string itemNameParent =
-                            itemPath.parent_path();
-                        BMCWEB_LOG_DEBUG << "itemNameParent: "
-                                         << itemNameParent;
-                        sdbusplus::message::object_path itemNameParentPath(
-                            itemNameParent);
-                        const std::string itemNameParentFilename =
-                            itemNameParentPath.filename();
-                        BMCWEB_LOG_DEBUG << "itemNameParentFilename: "
-                                         << itemNameParentFilename;
-                        if (itemName.empty())
-                        {
-                            BMCWEB_LOG_ERROR << "Failed to find itemName in "
-                                             << object.first;
-                            return;
-                        }
-
-                        std::string validPowerSupplyPath;
-
-                        BMCWEB_LOG_DEBUG << "Checking itemName.find("
-                                         << powerSupplyID << ")\n";
-                        if (itemNameParentFilename.find(powerSupplyID) !=
-                            std::string::npos)
-                        {
-                            // Clear resourceNotFound response
-                            asyncResp->res.clear();
-
-                            if (object.second.size() != 1)
-                            {
-                                BMCWEB_LOG_ERROR << "Error getting PowerSupply "
-                                                    "D-Bus object!";
-                                messages::internalError(asyncResp->res);
-                                return;
-                            }
-
-                            const std::string& path = object.first;
-                            const std::string& connectionName =
-                                object.second[0].first;
-
-                            callback(path, connectionName);
-                        }
-                        else
-                        {
-                            BMCWEB_LOG_INFO << "itemNameParentFilename ("
-                                            << itemNameParentFilename
-                                            << ") !find(powerSupplyID ("
-                                            << powerSupplyID << ")";
-                        }
-                    }
-                },
-                "xyz.openbmc_project.ObjectMapper", object.first + "/chassis",
-                "org.freedesktop.DBus.Properties", "Get",
-                "xyz.openbmc_project.Association", "endpoints");
-        }
-    };
-
-    // Get the input history items collection
+    // Attempt to get the input history items from associations
     crow::connections::systemBus->async_method_call(
         respHandler, "xyz.openbmc_project.ObjectMapper",
-        "/xyz/openbmc_project/object_mapper",
-        "xyz.openbmc_project.ObjectMapper", "GetSubTree",
-        "/org/open_power/sensors/aggregation", 0, interfaces);
+        powerSupplyPath + "/input_history", "org.freedesktop.DBus.Properties",
+        "Get", "xyz.openbmc_project.Association", "endpoints");
 
     BMCWEB_LOG_DEBUG << "getValidInputHistory exit";
 }
@@ -509,12 +413,15 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                         BMCWEB_LOG_DEBUG << "validPowerSupplyPath: "
                                          << *validPowerSupplyPath;
 
+                        // TODO: remove chassisID and powerSupplyID after
+                        // refactored.
                         auto getInputHistoryItemHandler =
-                            [asyncResp, chassisID,
-                             powerSupplyID](const std::optional<std::string>&
-                                                validInputHistoryItem,
-                                            [[maybe_unused]] const std::string&
-                                                validInputHistoryService) {
+                            [asyncResp, chassisID, powerSupplyID,
+                             validPowerSupplyPath](
+                                const std::optional<std::string>&
+                                    validInputHistoryItem,
+                                [[maybe_unused]] const std::string&
+                                    validInputHistoryService) {
                                 if (!validInputHistoryItem)
                                 {
                                     BMCWEB_LOG_ERROR
@@ -543,7 +450,7 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                                 getValues(asyncResp, chassisID, powerSupplyID);
                             };
                         getValidInputHistory(
-                            asyncResp, chassisID, powerSupplyID,
+                            asyncResp, *validPowerSupplyPath,
                             std::move(getInputHistoryItemHandler));
                     };
                 redfish::power_supply_utils::getValidPowerSupplyID(
