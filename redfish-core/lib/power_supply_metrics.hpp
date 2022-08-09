@@ -434,6 +434,10 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                                                                "Metrics");
                                     return;
                                 }
+
+                                BMCWEB_LOG_DEBUG << "validInputHistoryItem: "
+                                                 << *validInputHistoryItem;
+
                                 asyncResp->res.jsonValue["@odata.type"] =
                                     "#PowerSupplyMetrics.v1_0_0."
                                     "PowerSupplyMetrics";
