@@ -347,6 +347,9 @@ inline void
                     return;
                 }
 
+                // Clear resourceNotFound response
+                asyncResp->res.clear();
+
                 for (const auto& objpath : *inputHistoryItem)
                 {
                     BMCWEB_LOG_DEBUG << "objpath: " << objpath;
