@@ -350,13 +350,14 @@ inline void
                 // Clear resourceNotFound response
                 asyncResp->res.clear();
 
+                std::vector<std::string> inputHistoryPath;
                 for (const auto& objpath : *inputHistoryItem)
                 {
                     BMCWEB_LOG_DEBUG << "objpath: " << objpath;
+                    inputHistoryPath.push_back(objpath);
                 }
 
-                const std::string& inputHistoryPath = (*inputHistoryItem)[0];
-                const std::string& serviceName = "";
+                const std::string& serviceName = "not here";
 
                 callback(inputHistoryPath, serviceName);
             }
@@ -421,7 +422,7 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                         auto getInputHistoryItemHandler =
                             [asyncResp, chassisID, powerSupplyID,
                              validPowerSupplyPath](
-                                const std::optional<std::string>&
+                                const std::optional<std::vector<std::string>>&
                                     validInputHistoryItem,
                                 [[maybe_unused]] const std::string&
                                     validInputHistoryService) {
@@ -435,8 +436,13 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                                     return;
                                 }
 
-                                BMCWEB_LOG_DEBUG << "validInputHistoryItem: "
-                                                 << *validInputHistoryItem;
+                                for (const auto& objpath :
+                                     *validInputHistoryItem)
+                                {
+                                    BMCWEB_LOG_DEBUG
+                                        << "validInputHistoryItemPath: "
+                                        << objpath;
+                                }
 
                                 asyncResp->res.jsonValue["@odata.type"] =
                                     "#PowerSupplyMetrics.v1_0_0."
