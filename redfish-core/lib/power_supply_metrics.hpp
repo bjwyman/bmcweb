@@ -199,8 +199,16 @@ inline void
  */
 inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                       const std::string& chassisID,
-                      const std::string& powerSupplyID)
+                      const std::string& powerSupplyID,
+                      const std::vector<std::string>& inputHistoryItem)
 {
+    BMCWEB_LOG_DEBUG << "getValues(...chassidID: " << chassisID
+                     << " powerSupplyID: " << powerSupplyID << ")";
+    for (const auto& item : inputHistoryItem)
+    {
+        BMCWEB_LOG_DEBUG << " inputHistoryItem: " << item;
+    }
+
     BMCWEB_LOG_DEBUG
         << "Get power supply date/average/maximum input power values";
     // Setup InputPowerHistoryItems values array.
@@ -460,7 +468,8 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                                 asyncResp->res
                                     .jsonValue["Oem"]["IBM"]["@odata.type"] =
                                     "#OemPowerSupplyMetrics.IBM";
-                                getValues(asyncResp, chassisID, powerSupplyID);
+                                getValues(asyncResp, chassisID, powerSupplyID,
+                                          *validInputHistoryItem);
                             };
                         getValidInputHistory(
                             asyncResp, *validPowerSupplyPath,
