@@ -217,13 +217,8 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
         .jsonValue["Oem"]["IBM"]["InputPowerHistoryItems"]["@odata.type"] =
         "#OemPowerSupplyMetric.InputPowerHistoryItems";
 
-    // const std::array<const char*, 2> interfaces = {
-    //    "org.open_power.Sensor.Aggregation.History.Average",
-    //    "org.open_power.Sensor.Aggregation.History.Maximum"};
-    // const std::array<const char*, inputHistoryItem.size()> interfaces =
-    //    std::to_array(inputHistoryItem);
-    std::array<const char*, inputHistoryItem.size()> interfaces;
-    std::copy(inputHistoryItem.begin(), inputHistoryItem.end(), interfaces);
+    const std::array<const char*, 2> interfaces = {inputHistoryItem[0].c_str(),
+                                                   inputHistoryItem[1].c_str()};
 
     crow::connections::systemBus->async_method_call(
         [aResp, chassisID, powerSupplyID](
