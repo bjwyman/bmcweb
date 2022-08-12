@@ -1,5 +1,7 @@
 #pragma once
 
+#include <dbus_utility.hpp>
+
 namespace redfish
 {
 
@@ -227,8 +229,7 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
     crow::connections::systemBus->async_method_call(
         [aResp, chassisID, powerSupplyID, inputHistoryItem](
             const boost::system::error_code ec,
-            const std::vector<std::pair<std::string, std::vector<std::string>>>&
-                intfObject) mutable {
+            const dbus::utility::MapperGetObject& intfObject) mutable {
             if (ec)
             {
                 BMCWEB_LOG_DEBUG << "D-Bus response error on GetSubTree " << ec;
