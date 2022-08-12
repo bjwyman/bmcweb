@@ -189,45 +189,21 @@ inline void
         averageInterface, "Values");
 }
 
-/**
- * @brief Get power supply average, maximum and date values given chassis and
- * power supply IDs.
- *
- * @param[in] aResp - Shared pointer for asynchronous calls.
- * @param[in] chassisID - Chassis to which the values are associated.
- * @param[in] powerSupplyID - Power supply to which the values are associated.
- *
- * @return None.
- */
-inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
-                      const std::string& chassisID,
-                      const std::string& powerSupplyID,
-                      const std::vector<std::string>& inputHistoryItem)
+inline void getServiceAndPath(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+                              const std::string& objectPath,
+                              std::string& serviceName,
+                              std::string& averagePath,
+                              std::string& maximumPath)
 {
-    BMCWEB_LOG_DEBUG << "getValues(...chassidID: " << chassisID
-                     << " powerSupplyID: " << powerSupplyID << ")";
-    for (const auto& item : inputHistoryItem)
-    {
-        BMCWEB_LOG_DEBUG << " inputHistoryItem: " << item;
-    }
-
-    BMCWEB_LOG_DEBUG
-        << "Get power supply date/average/maximum input power values";
-    // Setup InputPowerHistoryItems values array.
-    // It will have 0 to many date/timestamp, average, and maximum entries.
-    aResp->res
-        .jsonValue["Oem"]["IBM"]["InputPowerHistoryItems"]["@odata.type"] =
-        "#OemPowerSupplyMetric.InputPowerHistoryItems";
-
+    BMCWEB_LOG_DEBUG << "ENTER: getServiceAndPath(...objectPath: " << objectPath
+                     << "...)";
+    // async...crow...call to GetObject...parse out ...
     const std::array<const char*, 2> interfaces = {
         "org.open_power.Sensor.Aggregation.History.Average",
         "org.open_power.Sensor.Aggregation.History.Maximum"};
 
-    // const std::array<const char*, 2> interfaces =
-    // {inputHistoryItem[0].c_str(),inputHistoryItem[1].c_str()};
-
     crow::connections::systemBus->async_method_call(
-        [aResp, chassisID, powerSupplyID, inputHistoryItem](
+        [aResp, objectPath, serviceName, averagePath, maximumPath](
             const boost::system::error_code ec,
             const dbus::utility::MapperGetObject& intfObject) mutable {
             if (ec)
@@ -236,10 +212,6 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                 messages::internalError(aResp->res);
                 return;
             }
-
-            std::string serviceName;
-            std::string averagePath;
-            std::string maximumPath;
 
             for (const auto& [service, interfaceNames] : intfObject)
             {
@@ -255,23 +227,67 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                     if (interface == averageInterface)
                     {
                         serviceName = service;
-                        averagePath = inputHistoryItem[0];
+                        averagePath = objectPath;
                     }
                     else if (interface == maximumInterface)
                     {
                         serviceName = service;
-                        maximumPath = inputHistoryItem[1];
+                        maximumPath = objectPath;
                     }
                 }
+                BMCWEB_LOG_DEBUG << "serviceName: " << serviceName;
+                BMCWEB_LOG_DEBUG << "averagePath: " << averagePath;
+                BMCWEB_LOG_DEBUG << "maximumPath: " << maximumPath;
             }
-
-            getAverageMaximumValues(aResp, serviceName, averagePath,
-                                    maximumPath);
         },
         "xyz.openbmc_project.ObjectMapper",
         "/xyz/openbmc_project/object_mapper",
-        "xyz.openbmc_project.ObjectMapper", "GetObject", inputHistoryItem[0],
+        "xyz.openbmc_project.ObjectMapper", "GetObject", objectPath,
         interfaces);
+
+    BMCWEB_LOG_DEBUG << "EXIT: getServiceAndPath(...)";
+}
+
+/**
+ * @brief Get power supply average, maximum and date values given chassis and
+ * power supply IDs.
+ *
+ * @param[in] aResp - Shared pointer for asynchronous calls.
+ * @param[in] chassisID - Chassis to which the values are associated.
+ * @param[in] powerSupplyID - Power supply to which the values are associated.
+ *
+ * @return None.
+ */
+inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+                      const std::string& chassisID,
+                      const std::string& powerSupplyID,
+                      const std::vector<std::string>& inputHistoryItem)
+{
+    BMCWEB_LOG_DEBUG << "ENTER: getValues(...chassidID: " << chassisID
+                     << " powerSupplyID: " << powerSupplyID << ")";
+    for (const auto& item : inputHistoryItem)
+    {
+        BMCWEB_LOG_DEBUG << " inputHistoryItem: " << item;
+    }
+
+    // Setup InputPowerHistoryItems values array.
+    // It will have 0 to many date/timestamp, average, and maximum entries.
+    aResp->res
+        .jsonValue["Oem"]["IBM"]["InputPowerHistoryItems"]["@odata.type"] =
+        "#OemPowerSupplyMetric.InputPowerHistoryItems";
+
+    std::string serviceName;
+    std::string averagePath;
+    std::string maximumPath;
+    getServiceAndPath(aResp, inputHistoryItem[0], serviceName, averagePath,
+                      maximumPath);
+    getServiceAndPath(aResp, inputHistoryItem[1], serviceName, averagePath,
+                      maximumPath);
+    BMCWEB_LOG_DEBUG
+        << "Get power supply date/average/maximum input power values";
+    getAverageMaximumValues(aResp, serviceName, averagePath, maximumPath);
+
+    BMCWEB_LOG_DEBUG << "EXIT: getValues(...)";
 }
 
 /**
