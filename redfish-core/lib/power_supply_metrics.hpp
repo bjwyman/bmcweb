@@ -252,14 +252,12 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
 
                 for (const auto& interface : interfaceNames)
                 {
-                    if (interface == "org.open_power.Sensor."
-                                     "Aggregation.History.Average")
+                    if (interface == averageInterface)
                     {
                         serviceName = service;
                         averagePath = inputHistoryItem[0];
                     }
-                    else if (interface == "org.open_power.Sensor."
-                                          "Aggregation.History.Maximum")
+                    else if (interface == maximumInterface)
                     {
                         serviceName = service;
                         maximumPath = inputHistoryItem[1];
