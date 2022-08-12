@@ -189,20 +189,18 @@ inline void
         averageInterface, "Values");
 }
 
-inline void getServiceAndPath(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
-                              const std::string& objectPath,
-                              std::string& serviceName,
-                              std::string& averagePath,
-                              std::string& maximumPath)
+inline void
+    getServicePathValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
+                         const std::string& objectPath,
+                         std::string& serviceName, std::string& averagePath,
+                         std::string& maximumPath)
 {
-    BMCWEB_LOG_DEBUG << "ENTER: getServiceAndPath(...objectPath: " << objectPath
-                     << "...)";
-    // async...crow...call to GetObject...parse out ...
+    // stuff
     const std::array<const char*, 2> interfaces = {
         "org.open_power.Sensor.Aggregation.History.Average",
         "org.open_power.Sensor.Aggregation.History.Maximum"};
 
-    crow::connections::systemBus->async_method_call(
+    auto getServiceAndPathHandler =
         [aResp, objectPath, serviceName, averagePath, maximumPath](
             const boost::system::error_code ec,
             const dbus::utility::MapperGetObject& intfObject) mutable {
@@ -226,35 +224,57 @@ inline void getServiceAndPath(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                 {
                     if (interface == averageInterface)
                     {
-                        serviceName = service;
-                        averagePath = objectPath;
+                        if (serviceName.empty())
+                        {
+                            serviceName = service;
+                        }
+                        if (averagePath.empty())
+                        {
+                            averagePath = objectPath;
+                        }
                     }
                     else if (interface == maximumInterface)
                     {
-                        serviceName = service;
-                        maximumPath = objectPath;
+                        if (serviceName.empty())
+                        {
+                            serviceName = service;
+                        }
+                        if (maximumPath.empty())
+                        {
+                            maximumPath = objectPath;
+                        }
                     }
                 }
                 BMCWEB_LOG_DEBUG << "serviceName: " << serviceName;
                 BMCWEB_LOG_DEBUG << "averagePath: " << averagePath;
                 BMCWEB_LOG_DEBUG << "maximumPath: " << maximumPath;
             }
-        },
-        "xyz.openbmc_project.ObjectMapper",
+
+            if (!serviceName.empty() && !averagePath.empty() &&
+                !maximumPath.empty())
+            {
+                BMCWEB_LOG_DEBUG << "Get power supply date/average/maximum "
+                                    "input power values";
+                getAverageMaximumValues(aResp, serviceName, averagePath,
+                                        maximumPath);
+            }
+        };
+
+    crow::connections::systemBus->async_method_call(
+        getServiceAndPathHandler, "xyz.openbmc_project.ObjectMapper",
         "/xyz/openbmc_project/object_mapper",
         "xyz.openbmc_project.ObjectMapper", "GetObject", objectPath,
         interfaces);
-
-    BMCWEB_LOG_DEBUG << "EXIT: getServiceAndPath(...)";
 }
 
 /**
- * @brief Get power supply average, maximum and date values given chassis and
- * power supply IDs.
+ * @brief Get power supply average, maximum and date values given chassis
+ * and power supply IDs.
  *
  * @param[in] aResp - Shared pointer for asynchronous calls.
  * @param[in] chassisID - Chassis to which the values are associated.
- * @param[in] powerSupplyID - Power supply to which the values are associated.
+ * @param[in] powerSupplyID - Power supply to which the values are
+ * associated.
  *
  * @return None.
  */
@@ -279,13 +299,11 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
     std::string serviceName;
     std::string averagePath;
     std::string maximumPath;
-    getServiceAndPath(aResp, inputHistoryItem[0], serviceName, averagePath,
-                      maximumPath);
-    getServiceAndPath(aResp, inputHistoryItem[1], serviceName, averagePath,
-                      maximumPath);
-    BMCWEB_LOG_DEBUG
-        << "Get power supply date/average/maximum input power values";
-    getAverageMaximumValues(aResp, serviceName, averagePath, maximumPath);
+
+    getServicePathValues(aResp, inputHistoryItem[0], serviceName, averagePath,
+                         maximumPath);
+    getServicePathValues(aResp, inputHistoryItem[1], serviceName, averagePath,
+                         maximumPath);
 
     BMCWEB_LOG_DEBUG << "EXIT: getValues(...)";
 }
