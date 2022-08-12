@@ -192,6 +192,7 @@ inline void
 inline void
     getServicePathValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
                          const std::string& objectPath,
+                         const std::string& objectPath2,
                          std::string& serviceName, std::string& averagePath,
                          std::string& maximumPath)
 {
@@ -201,7 +202,7 @@ inline void
         "org.open_power.Sensor.Aggregation.History.Maximum"};
 
     auto getServiceAndPathHandler =
-        [aResp, objectPath, serviceName, averagePath, maximumPath](
+        [aResp, objectPath, objectPath2, serviceName, averagePath, maximumPath](
             const boost::system::error_code ec,
             const dbus::utility::MapperGetObject& intfObject) mutable {
             if (ec)
@@ -250,13 +251,17 @@ inline void
                 BMCWEB_LOG_DEBUG << "maximumPath: " << maximumPath;
             }
 
-            if (!serviceName.empty() && !averagePath.empty() &&
-                !maximumPath.empty())
+            if (objectPath2.empty())
             {
                 BMCWEB_LOG_DEBUG << "Get power supply date/average/maximum "
                                     "input power values";
                 getAverageMaximumValues(aResp, serviceName, averagePath,
                                         maximumPath);
+            }
+            else
+            {
+                getServicePathValues(aResp, objectPath2, "", serviceName,
+                                     averagePath, maximumPath);
             }
         };
 
@@ -297,10 +302,8 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
     std::string averagePath;
     std::string maximumPath;
 
-    getServicePathValues(aResp, inputHistoryItem[0], serviceName, averagePath,
-                         maximumPath);
-    getServicePathValues(aResp, inputHistoryItem[1], serviceName, averagePath,
-                         maximumPath);
+    getServicePathValues(aResp, inputHistoryItem[0], inputHistoryItem[1],
+                         serviceName, averagePath, maximumPath);
 
     BMCWEB_LOG_DEBUG << "EXIT: getValues(...)";
 }
