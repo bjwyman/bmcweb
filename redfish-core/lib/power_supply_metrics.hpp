@@ -278,12 +278,9 @@ inline void
  * @return None.
  */
 inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
-                      const std::string& chassisID,
-                      const std::string& powerSupplyID,
                       const std::vector<std::string>& inputHistoryItem)
 {
-    BMCWEB_LOG_DEBUG << "ENTER: getValues(...chassidID: " << chassisID
-                     << " powerSupplyID: " << powerSupplyID << ")";
+    BMCWEB_LOG_DEBUG << "ENTER: getValues(...)";
     for (const auto& item : inputHistoryItem)
     {
         BMCWEB_LOG_DEBUG << " inputHistoryItem: " << item;
@@ -474,8 +471,7 @@ inline void requestRoutesPowerSupplyMetrics(App& app)
                                 asyncResp->res
                                     .jsonValue["Oem"]["IBM"]["@odata.type"] =
                                     "#OemPowerSupplyMetrics.IBM";
-                                getValues(asyncResp, chassisID, powerSupplyID,
-                                          *validInputHistoryItem);
+                                getValues(asyncResp, *validInputHistoryItem);
                             };
                         getValidInputHistory(
                             asyncResp, *validPowerSupplyPath,
