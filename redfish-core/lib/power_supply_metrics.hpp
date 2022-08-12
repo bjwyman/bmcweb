@@ -217,16 +217,18 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
         .jsonValue["Oem"]["IBM"]["InputPowerHistoryItems"]["@odata.type"] =
         "#OemPowerSupplyMetric.InputPowerHistoryItems";
 
-    const std::array<const char*, 2> interfaces = {inputHistoryItem[0].c_str(),
-                                                   inputHistoryItem[1].c_str()};
+    const std::array<const char*, 2> interfaces = {
+        "org.open_power.Sensor.Aggregation.History.Average",
+        "org.open_power.Sensor.Aggregation.History.Maximum"};
+
+    // const std::array<const char*, 2> interfaces =
+    // {inputHistoryItem[0].c_str(),inputHistoryItem[1].c_str()};
 
     crow::connections::systemBus->async_method_call(
-        [aResp, chassisID, powerSupplyID](
+        [aResp, chassisID, powerSupplyID, inputHistoryItem](
             const boost::system::error_code ec,
-            const std::vector<std::pair<
-                std::string,
-                std::vector<std::pair<std::string, std::vector<std::string>>>>>&
-                intfSubTree) mutable {
+            const std::vector<std::pair<std::string, std::vector<std::string>>>&
+                intfObject) mutable {
             if (ec)
             {
                 BMCWEB_LOG_DEBUG << "D-Bus response error on GetSubTree " << ec;
@@ -238,55 +240,28 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
             std::string averagePath;
             std::string maximumPath;
 
-            for (const auto& [objectPath, connectionNames] : intfSubTree)
+            for (const auto& [service, interfaceNames] : intfObject)
             {
-                if (objectPath.empty())
+                if (service.empty())
                 {
                     BMCWEB_LOG_DEBUG << "Error getting D-Bus object!";
                     messages::internalError(aResp->res);
                     return;
                 }
 
-                const std::string& validPath = objectPath;
-                auto psuMatchStr = powerSupplyID + "_input_power";
-                std::string psuInputPowerStr;
-                // validPath -> {psu}_input_power
-                // 5 below comes from
-                // /org/open_power/sensors/aggregation/per_30s/
-                //   0      1         2         3         4
-                // .../{psu}_input_power/[average,maximum]
-                //           5..............6
-                if (!dbus::utility::getNthStringFromPath(validPath, 5,
-                                                         psuInputPowerStr))
+                for (const auto& interface : interfaceNames)
                 {
-                    BMCWEB_LOG_ERROR << "Got invalid path " << validPath;
-                    messages::invalidObject(aResp->res, validPath);
-                    return;
-                }
-
-                if (psuInputPowerStr != psuMatchStr)
-                {
-                    // not this power supply, continue to next objectPath...
-                    continue;
-                }
-
-                BMCWEB_LOG_DEBUG << "Got validPath: " << validPath;
-                for (const auto& connection : connectionNames)
-                {
-                    serviceName = connection.first;
-
-                    for (const auto& interfaceName : connection.second)
+                    if (interface == "org.open_power.Sensor."
+                                     "Aggregation.History.Average")
                     {
-                        if (interfaceName == "org.open_power.Sensor."
-                                             "Aggregation.History.Average")
-                        {
-                            averagePath = validPath;
-                        }
-                        else if (interfaceName == "org.open_power.Sensor."
-                                                  "Aggregation.History.Maximum")
-                        {
-                            maximumPath = validPath;
-                        }
+                        serviceName = service;
+                        averagePath = inputHistoryItem[0];
+                    }
+                    else if (interface == "org.open_power.Sensor."
+                                          "Aggregation.History.Maximum")
+                    {
+                        serviceName = service;
+                        maximumPath = inputHistoryItem[1];
                     }
                 }
             }
@@ -296,8 +271,8 @@ inline void getValues(const std::shared_ptr<bmcweb::AsyncResp>& aResp,
         },
         "xyz.openbmc_project.ObjectMapper",
         "/xyz/openbmc_project/object_mapper",
-        "xyz.openbmc_project.ObjectMapper", "GetSubTree",
-        "/org/open_power/sensors/aggregation/per_30s", 0, interfaces);
+        "xyz.openbmc_project.ObjectMapper", "GetObject", inputHistoryItem[0],
+        interfaces);
 }
 
 /**
